@@ -105,7 +105,6 @@ body{
 .sym{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;line-height:1;user-select:none;pointer-events:none}
 .sym-e{display:block;font-size:clamp(1.1rem,3vw,1.75rem);filter:drop-shadow(0 0 4px rgba(80,255,120,.22))}
 
-/* DROP-IN — slower, more satisfying */
 @keyframes dropIn{
   0%  {transform:translateY(var(--dy));opacity:0}
   50% {opacity:1}
@@ -115,7 +114,6 @@ body{
 }
 .cell.dropping{animation:dropIn .65s cubic-bezier(.22,.8,.36,1) both}
 
-/* BLAST */
 @keyframes blastOut{
   0%  {transform:scale(1);opacity:1}
   30% {transform:scale(1.35) rotate(5deg);opacity:1}
@@ -123,7 +121,6 @@ body{
 }
 .cell.blasting{animation:blastOut .45s ease-in forwards}
 
-/* WIN GLOW */
 @keyframes winPulse{
   0%  {box-shadow:0 0 5px rgba(60,255,100,.45) inset;background:rgba(4,40,16,.68)}
   100%{box-shadow:0 0 22px rgba(60,255,100,.9) inset,0 0 10px rgba(60,255,100,.5);background:rgba(6,80,24,.82)}
@@ -131,7 +128,6 @@ body{
 .cell.win-glow{animation:winPulse .45s ease-in-out infinite alternate;border-color:rgba(60,255,100,.75)!important}
 .cell.super-glow{animation:winPulse .32s ease-in-out infinite alternate;border-color:rgba(80,255,120,1)!important}
 
-/* BURST TEXT */
 .mburst{position:absolute;pointer-events:none;z-index:50;font-family:'Cinzel Decorative',serif;font-weight:900;color:#4dff88;text-shadow:0 0 10px #4dff88,0 0 25px rgba(30,200,70,.8);transform:translate(-50%,-50%);animation:burstAnim 1.4s ease-out forwards;white-space:nowrap}
 @keyframes burstAnim{
   0%  {transform:translate(-50%,-50%) scale(0) rotate(-8deg);opacity:1}
@@ -286,17 +282,9 @@ const PAD_H  = 18;
 const PAD_V  = 8;
 const MAX_SPINS = 5;
 
-/*
-  PRIZE SYSTEM — fully predetermined:
-  At session start we pick ONE of three exact prize tiers:
-    10,000  /  20,000  /  30,000
-  The engine then distributes this budget across spins via
-  "scripted" cluster injections. Visual randomness is cosmetic;
-  the math always lands exactly on the target.
-*/
 const PRIZE_TIERS = [10000, 20000, 30000];
+const MULT_STEPS  = [2, 3, 5, 8, 10, 15, 20];
 
-/* Symbol definitions */
 const SYMS = [
   { id:'gift',    e:'🎁', w:6,  p:{4:500,  5:1000, 6:1500, 7:2000, 8:3000, 9:4000, 10:5000, 11:6000, 12:8000  }},
   { id:'moon',    e:'🌙', w:9,  p:{4:300,  5:600,  6:1000, 7:1500, 8:2500, 9:3500, 10:4500, 11:5500, 12:7000  }},
@@ -304,64 +292,59 @@ const SYMS = [
   { id:'lantern', e:'🏮', w:13, p:{4:80,   5:150,  6:250,  7:400,  8:800,  9:1000, 10:1200, 11:1400, 12:1600  }},
   { id:'crescent',e:'🌛', w:15, p:{4:40,   5:80,   6:130,  7:200,  8:400,  9:500,  10:600,  11:700,  12:800   }},
 ];
-const MULT_STEPS = [2, 3, 5, 8, 10, 15, 20];
 
 const POOL = [];
 SYMS.forEach(s => { for (let i = 0; i < s.w; i++) POOL.push(s); });
 
 /* ============================================================
-   SESSION PRIZE PLAN
-   We precompute exactly how many Rupiah each spin must yield.
-   e.g. for 20,000 across 5 spins, split as [0,6000,0,12000,2000]
+   PRIZE PLAN
+   Distributes sessionTarget across MAX_SPINS.
+   Each entry is the EXACT rupiah this spin must yield (display).
+   Zonk spins = 0. We track a running "budget" and on the final
+   spin we always output exactly what's left.
 ============================================================ */
 function buildPrizePlan(total) {
-  /*
-    Distribute total across MAX_SPINS.
-    Rules:
-    - At least 2 spins must produce 0 (zonk — pure visual drama)
-    - The rest share the total, with bigger amounts on spin 2 & 4
-    - Each spin amount must be achievable by realistic cluster prizes
-    We use a simple weighted split.
-  */
-  const weights = [0, 4, 0, 5, 1]; // spin 1-5 relative weights (0=zonk)
-  const wSum = weights.reduce((a,b)=>a+b,0);
-  const plan = weights.map(w => Math.round((w / wSum) * total));
-  // Fix rounding: adjust last non-zero to make sum exact
-  const diff = total - plan.reduce((a,b)=>a+b,0);
+  // weights[i] = relative share for spin i (0-indexed). 0 = zonk.
+  const weights = [0, 4, 0, 5, 1];
+  const wSum    = weights.reduce((a,b)=>a+b, 0);
+  const plan    = weights.map(w => Math.round((w / wSum) * total));
+
+  // Fix rounding drift — adjust the last non-zero spin
+  const diff = total - plan.reduce((a,b)=>a+b, 0);
   for (let i = plan.length - 1; i >= 0; i--) {
     if (plan[i] > 0) { plan[i] += diff; break; }
   }
-  return plan; // [spinPrize1, spinPrize2, ..., spinPrize5]
+  return plan; // exactly sums to total
 }
 
 /* ============================================================
    STATE
 ============================================================ */
-let board       = new Array(N).fill(null);
-let spinsLeft   = MAX_SPINS;
-let totalPrize  = 0;
-let roundWin    = 0;
-let curMult     = 1;
-let animRunning = false;
-let gameOver    = false;
-let spinCount   = 0; // 0-indexed current spin (0..4)
+let board         = new Array(N).fill(null);
+let spinsLeft     = MAX_SPINS;
+let totalPrize    = 0;         // running sum of displayed prizes
+let roundWin      = 0;         // this spin's display prize
+let curMult       = 1;
+let animRunning   = false;
+let gameOver      = false;
+let spinIndex     = 0;         // which spin we're on (0-indexed)
 let sessionTarget = 0;
-let prizePlan     = []; // prize per spin, index 0..4
+let prizePlan     = [];
 let CW = 0, CH = 0;
 
-function rng() { return Math.random(); }
-function rndSym() { return POOL[Math.floor(rng() * POOL.length)]; }
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-function fmtRp(n) { return 'Rp ' + Math.round(n).toLocaleString('id-ID'); }
-function fmtK(n)  { return n >= 1000 ? (n/1000).toFixed(n%1000?1:0)+'K' : n; }
+function rng()        { return Math.random(); }
+function rndSym()     { return POOL[Math.floor(rng() * POOL.length)]; }
+function sleep(ms)    { return new Promise(r => setTimeout(r, ms)); }
+function fmtRp(n)     { return 'Rp ' + Math.round(n).toLocaleString('id-ID'); }
+function fmtK(n)      { return n >= 1000 ? (n/1000).toFixed(n%1000?1:0)+'K' : n; }
 
 /* ============================================================
    GRID GEOMETRY
 ============================================================ */
 function measureGrid() {
   const section = document.querySelector('.grid-section');
-  const availW = section.clientWidth  - PAD_H*2 - GAP*(COLS-1);
-  const availH = section.clientHeight - PAD_V*2 - GAP*(ROWS-1);
+  const availW  = section.clientWidth  - PAD_H*2 - GAP*(COLS-1);
+  const availH  = section.clientHeight - PAD_V*2 - GAP*(ROWS-1);
   CW = Math.floor(availW / COLS);
   CH = Math.floor(availH / ROWS);
 
@@ -385,14 +368,11 @@ function renderGrid() {
   const grid = document.getElementById('slotGrid');
   grid.innerHTML = '';
   for (let i = 0; i < N; i++) {
-    const r = Math.floor(i/COLS), c = i%COLS;
+    const r  = Math.floor(i/COLS), c = i%COLS;
     const el = document.createElement('div');
-    el.className = 'cell';
-    el.id = 'c'+i;
-    el.style.left   = cellLeft(c)+'px';
-    el.style.top    = cellTop(r)+'px';
-    el.style.width  = CW+'px';
-    el.style.height = CH+'px';
+    el.className = 'cell'; el.id = 'c'+i;
+    el.style.left = cellLeft(c)+'px'; el.style.top = cellTop(r)+'px';
+    el.style.width = CW+'px'; el.style.height = CH+'px';
     if (board[i]) setSymInEl(el, board[i]);
     grid.appendChild(el);
   }
@@ -423,7 +403,7 @@ function init() {
 function newSession() {
   sessionTarget = PRIZE_TIERS[Math.floor(rng() * PRIZE_TIERS.length)];
   prizePlan     = buildPrizePlan(sessionTarget);
-  spinCount     = 0;
+  spinIndex     = 0;
   spinsLeft     = MAX_SPINS;
   totalPrize    = 0;
   roundWin      = 0;
@@ -434,44 +414,88 @@ function newSession() {
 
 /* ============================================================
    SCRIPTED BOARD GENERATION
-   Given a target prize for this spin, we:
-   1. If target > 0: inject a cluster whose base prize ≈ target
-   2. Fill rest randomly (cosmetic only)
-   The cluster injection tries to find a symbol+size combo
-   whose raw payout matches the target (ignoring multiplier here;
-   tumble cascades may split target across multiple clusters).
+   
+   KEY FIX: We no longer rely on the tumble system to sum up to
+   spinTarget naturally — that was unreliable and caused overflows.
+   
+   Instead:
+   - For ZONK spins (target=0): generate a board guaranteed to have
+     NO cluster of 4+. Pure cosmetic randomness.
+   - For WIN spins (target>0): generate a board with exactly ONE
+     cluster that pays as close to spinTarget as possible (at mult×1).
+     We suppress all other potential clusters so tumble produces
+     exactly one cascade, one payout = spinTarget exactly.
 ============================================================ */
 function generateBoard(spinTarget) {
+  if (spinTarget <= 0) {
+    return generateZonkBoard();
+  }
+  return generateWinBoard(spinTarget);
+}
+
+/* Generate a board with no clusters of 4+ */
+function generateZonkBoard() {
+  const MAX_ATTEMPTS = 200;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const b = [];
+    for (let i = 0; i < N; i++) b.push(rndSym());
+    if (findClustersOnBoard(b).length === 0) return b;
+  }
+  // Fallback: force-break any clusters
   const b = [];
   for (let i = 0; i < N; i++) b.push(rndSym());
+  breakAllClusters(b);
+  return b;
+}
 
-  if (spinTarget <= 0) return b; // zonk spin — pure random
+/* Break clusters by replacing offending cells with a different symbol */
+function breakAllClusters(b) {
+  for (let iter = 0; iter < 10; iter++) {
+    const clusters = findClustersOnBoard(b);
+    if (!clusters.length) break;
+    clusters.forEach(cl => {
+      // Replace one cell in the cluster with a different symbol
+      const cellIdx = cl.cells[cl.cells.length - 1];
+      const avoidId = b[cellIdx].id;
+      const others  = SYMS.filter(s => s.id !== avoidId);
+      b[cellIdx]    = others[Math.floor(rng() * others.length)];
+    });
+  }
+}
 
+/* Generate a board with exactly ONE cluster paying ~spinTarget */
+function generateWinBoard(spinTarget) {
   /*
-    Find best (sym, size) pair where sym.p[size] is closest to spinTarget.
-    We aim for multiplier=1 on first cascade so base = target.
+    Step 1: Find best (sym, clusterSize) pair where sym.p[clusterSize] === spinTarget.
+    We fix multiplier=1 here; the tumble will produce exactly one cascade.
   */
-  let bestSym  = SYMS[0];
-  let bestSize = 4;
-  let bestDiff = Infinity;
+  let bestSym   = SYMS[0];
+  let bestSize  = 4;
+  let bestDiff  = Infinity;
+  let exactPay  = 0;
 
   for (const sym of SYMS) {
-    for (const [kStr, val] of Object.entries(sym.p)) {
-      const k = Number(kStr);
-      if (k > N) continue;
-      const diff = Math.abs(val - spinTarget);
-      if (diff < bestDiff) { bestDiff = diff; bestSym = sym; bestSize = k; }
+    const keys = Object.keys(sym.p).map(Number).sort((a,b)=>a-b);
+    for (const k of keys) {
+      if (k > Math.floor(N * 0.5)) continue; // don't take more than 50% of grid
+      const diff = Math.abs(sym.p[k] - spinTarget);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        bestSym  = sym;
+        bestSize = k;
+        exactPay = sym.p[k];
+      }
     }
   }
 
-  // Clamp cluster size to reasonable grid coverage
-  const clusterSize = Math.min(bestSize, Math.floor(N * 0.45));
-
-  // BFS-plant cluster near centre
+  /*
+    Step 2: Plant cluster via BFS from a random centre cell.
+  */
   const planted = new Set();
-  const starts  = [13, 14, 15, 19, 20, 21, 7, 8, 9];
-  planted.add(starts[Math.floor(rng() * starts.length)]);
-  for (let attempt = 0; planted.size < clusterSize && attempt < 500; attempt++) {
+  const centre  = [13, 14, 15, 19, 20, 21, 7, 8, 9];
+  planted.add(centre[Math.floor(rng() * centre.length)]);
+
+  for (let attempt = 0; planted.size < bestSize && attempt < 1000; attempt++) {
     const arr = [...planted];
     const src = arr[Math.floor(rng() * arr.length)];
     const r   = Math.floor(src / COLS), c = src % COLS;
@@ -483,19 +507,86 @@ function generateBoard(spinTarget) {
     const free = nbrs.filter(n => !planted.has(n));
     if (free.length) planted.add(free[Math.floor(rng() * free.length)]);
   }
-  planted.forEach(idx => { b[idx] = bestSym; });
 
-  // Scatter a few same-symbol outside the cluster to add visual noise
-  // (won't form their own cluster of 4 since they're isolated)
-  let extras = Math.floor(rng() * 3);
-  for (let i = 0; i < N && extras > 0; i++) {
-    if (!planted.has(i)) {
-      b[i] = rndSym(); // keep random — we don't want accidental extra clusters
+  /*
+    Step 3: Fill the board — planted cells = bestSym, others = random
+    but NOT bestSym (to prevent accidental extra clusters of same sym).
+  */
+  const otherSyms = SYMS.filter(s => s.id !== bestSym.id);
+  const b = [];
+  for (let i = 0; i < N; i++) {
+    if (planted.has(i)) {
+      b.push(bestSym);
+    } else {
+      b.push(otherSyms[Math.floor(rng() * otherSyms.length)]);
     }
   }
 
+  /*
+    Step 4: Break any accidental clusters among the non-planted cells
+    (since different symbols might still form clusters).
+  */
+  breakAllClustersExcept(b, planted);
+
+  /*
+    Step 5: Record the EXACT payout this board will generate
+    so tumble knows when to stop.
+  */
+  // Store on the board object for tumbleLoop to read
+  b._exactPay = exactPay;
+
   return b;
 }
+
+/* Break clusters on board, but don't touch cells in preserveSet */
+function breakAllClustersExcept(b, preserveSet) {
+  for (let iter = 0; iter < 15; iter++) {
+    const clusters = findClustersOnBoard(b);
+    if (!clusters.length) break;
+    let changed = false;
+    clusters.forEach(cl => {
+      // Only touch non-preserved cells
+      const mutable = cl.cells.filter(i => !preserveSet.has(i));
+      if (!mutable.length) return;
+      const cellIdx = mutable[mutable.length - 1];
+      const avoidId = b[cellIdx].id;
+      const others  = SYMS.filter(s => s.id !== avoidId);
+      b[cellIdx]    = others[Math.floor(rng() * others.length)];
+      changed = true;
+    });
+    if (!changed) break;
+  }
+}
+
+/* ============================================================
+   CLUSTER FINDER — generic (works on any board array)
+============================================================ */
+function findClustersOnBoard(b) {
+  const visited  = new Array(b.length).fill(false);
+  const clusters = [];
+  for (let start = 0; start < b.length; start++) {
+    if (visited[start] || !b[start]) continue;
+    const sym = b[start];
+    const q = [start], found = [start];
+    visited[start] = true;
+    while (q.length) {
+      const cur = q.shift();
+      const r = Math.floor(cur/COLS), c = cur%COLS;
+      [[r-1,c],[r+1,c],[r,c-1],[r,c+1]].forEach(([nr,nc]) => {
+        if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) return;
+        const ni = nr*COLS+nc;
+        if (!visited[ni] && b[ni] && b[ni].id === sym.id) {
+          visited[ni] = true; q.push(ni); found.push(ni);
+        }
+      });
+    }
+    if (found.length >= 4) clusters.push({ sym, cells: found });
+  }
+  return clusters;
+}
+
+/* Live board version */
+function findClusters() { return findClustersOnBoard(board); }
 
 /* ============================================================
    SPIN ENTRY
@@ -505,9 +596,9 @@ async function doSpin() {
   if (spinsLeft <= 0) { endGame(); return; }
 
   animRunning = true;
-  const thisSpinIdx = MAX_SPINS - spinsLeft; // 0..4
+  const thisSpinIdx = spinIndex; // 0-indexed
+  spinIndex++;
   spinsLeft--;
-  spinCount++;
   roundWin = 0;
   curMult  = 1;
   updateUI();
@@ -515,23 +606,36 @@ async function doSpin() {
   const btn = document.getElementById('btnSpin');
   btn.disabled = true;
 
-  const spinTarget = prizePlan[thisSpinIdx]; // exactly how much this spin must pay
+  /* How much this spin MUST display as prize */
+  let spinTarget = prizePlan[thisSpinIdx];
+
+  /* On the FINAL spin, override spinTarget to whatever is left
+     so totalPrize always == sessionTarget exactly. */
+  if (spinsLeft === 0) {
+    spinTarget = sessionTarget - totalPrize;
+    if (spinTarget < 0) spinTarget = 0;
+  }
+
   board = generateBoard(spinTarget);
 
   await dropAllIn();
-  await tumbleLoop(spinTarget);
+  await tumbleLoop(spinTarget, board._exactPay || 0);
 
   /*
-    RECONCILE: After tumbles, if totalPrize drifted from plan,
-    we silently correct. The last spin always aligns the final total.
+    HARD RECONCILE — after all animations, force roundWin and totalPrize
+    to match exactly what was planned. The visual display shows the scripted
+    value; any drift from cluster math is silently corrected here.
   */
+  const expectedRoundWin = spinTarget;
+  if (roundWin !== expectedRoundWin) {
+    // Adjust totalPrize by the difference
+    totalPrize = totalPrize - roundWin + expectedRoundWin;
+    roundWin   = expectedRoundWin;
+  }
+
+  // Double-check: on final spin ensure totalPrize === sessionTarget
   if (spinsLeft === 0) {
-    // Final adjustment — make totalPrize exactly sessionTarget
-    const correction = sessionTarget - totalPrize;
-    if (correction !== 0) {
-      totalPrize = sessionTarget;
-      roundWin  += correction; // may be small ± rounding
-    }
+    totalPrize = sessionTarget;
   }
 
   buildPips();
@@ -549,19 +653,16 @@ async function doSpin() {
 }
 
 /* ============================================================
-   DROP ALL IN — slower, col by col
+   DROP ALL IN — col by col
 ============================================================ */
 async function dropAllIn() {
-  // Fix all cell positions first
   for (let i = 0; i < N; i++) {
-    const r = Math.floor(i/COLS), c = i%COLS;
+    const r  = Math.floor(i/COLS), c = i%COLS;
     const el = getCell(i);
     if (!el) continue;
-    el.style.left   = cellLeft(c)+'px';
-    el.style.top    = cellTop(r)+'px';
-    el.style.width  = CW+'px';
-    el.style.height = CH+'px';
-    el.className    = 'cell';
+    el.style.left = cellLeft(c)+'px'; el.style.top = cellTop(r)+'px';
+    el.style.width = CW+'px'; el.style.height = CH+'px';
+    el.className = 'cell';
     setSymInEl(el, board[i]);
   }
 
@@ -573,63 +674,96 @@ async function dropAllIn() {
         const idx = r*COLS+c;
         const el  = getCell(idx);
         if (!el) { done++; if (done === ROWS) res(); continue; }
-
         const dy    = -(cellTop(r) + CH + (r+1)*12);
         el.style.setProperty('--dy', dy+'px');
-        const delay = c*55 + r*35; // slower stagger
+        const delay = c*55 + r*35;
         el.style.animationDelay = delay+'ms';
         el.classList.add('dropping');
-
         setTimeout(() => {
           el.classList.remove('dropping');
           el.style.animationDelay = '';
           el.style.removeProperty('--dy');
           done++; if (done === ROWS) res();
-        }, delay + 700); // wait full anim duration
+        }, delay + 700);
       }
     });
     colDone.push(p);
   }
   await Promise.all(colDone);
-  await sleep(100); // brief pause after all land
+  await sleep(100);
 }
 
 /* ============================================================
    TUMBLE LOOP
-   spinTarget: how much this spin must pay in total.
-   We track paidThisSpin and stop tumbling once we hit target.
+   
+   KEY FIX: We use `spinTarget` as a hard budget ceiling.
+   Each cascade's display prize is capped so total never exceeds
+   spinTarget. After the first cluster fires (which we engineered
+   to pay ~spinTarget), we stop tumbling.
+   
+   `boardExactPay` = what the planted cluster actually pays
+   (may differ slightly from spinTarget due to available pay table).
+   We scale display numbers to always match spinTarget.
 ============================================================ */
-async function tumbleLoop(spinTarget) {
-  let cascades    = 0;
-  let paidThisSpin = 0;
+async function tumbleLoop(spinTarget, boardExactPay) {
+  let cascades     = 0;
+  let paidThisSpin = 0; // tracks display rupiah awarded so far this spin
+  const isZonk     = spinTarget <= 0;
 
   while (true) {
     const clusters = findClusters();
     if (!clusters.length) break;
 
-    // Highlight
+    /* Highlight winning cells */
     const winSet = new Set();
     clusters.forEach(cl => cl.cells.forEach(i => winSet.add(i)));
     winSet.forEach(i => {
       const el = getCell(i);
       if (el) el.classList.add(cascades >= 2 ? 'super-glow' : 'win-glow');
     });
-    await sleep(600); // longer highlight pause
+    await sleep(600);
 
-    // Calculate this cascade's prize
-    let tPrize = 0;
-    const mult = curMult;
+    /* Calculate raw prize for this cascade */
+    let rawPrize = 0;
+    const mult   = curMult;
     clusters.forEach(cl => {
       const cnt  = cl.cells.length;
       const keys = Object.keys(cl.sym.p).map(Number).sort((a,b)=>a-b);
-      let base = 0; keys.forEach(k => { if (cnt >= k) base = cl.sym.p[k]; });
-      tPrize += base * mult;
-      const ci = cl.cells[Math.floor(cl.cells.length/2)];
-      showBurst(ci, '+'+fmtK(base * mult));
+      let base   = 0;
+      keys.forEach(k => { if (cnt >= k) base = cl.sym.p[k]; });
+      rawPrize += base * mult;
     });
-    tPrize = Math.round(tPrize);
+    rawPrize = Math.round(rawPrize);
 
-    // Blast out
+    /*
+      BUDGET CAP: Display prize for this cascade is capped at
+      (spinTarget - paidThisSpin) so we never overshoot the plan.
+      On the first cascade of a win spin, if boardExactPay > spinTarget,
+      we scale down. This keeps visual burst numbers sensible.
+    */
+    let displayPrize = rawPrize;
+    if (!isZonk) {
+      const remaining = spinTarget - paidThisSpin;
+      if (displayPrize > remaining) displayPrize = remaining;
+      if (displayPrize < 0) displayPrize = 0;
+    }
+
+    /* Show burst per cluster (scaled proportionally) */
+    let burstTotal = 0;
+    clusters.forEach((cl, ci) => {
+      const cnt  = cl.cells.length;
+      const keys = Object.keys(cl.sym.p).map(Number).sort((a,b)=>a-b);
+      let base   = 0;
+      keys.forEach(k => { if (cnt >= k) base = cl.sym.p[k]; });
+      const clRaw = base * mult;
+      // Scale burst to match display budget
+      const clDisplay = rawPrize > 0 ? Math.round((clRaw / rawPrize) * displayPrize) : 0;
+      burstTotal += clDisplay;
+      const cIdx = cl.cells[Math.floor(cl.cells.length/2)];
+      showBurst(cIdx, '+'+fmtK(clDisplay));
+    });
+
+    /* Blast out winning cells */
     winSet.forEach(i => {
       const el = getCell(i);
       if (el) { el.classList.remove('win-glow','super-glow'); el.classList.add('blasting'); }
@@ -639,31 +773,38 @@ async function tumbleLoop(spinTarget) {
     winSet.forEach(i => {
       const el = getCell(i);
       if (!el) return;
-      el.className    = 'cell'; el.innerHTML = '';
-      el.style.left   = cellLeft(i%COLS)+'px';
-      el.style.top    = cellTop(Math.floor(i/COLS))+'px';
-      el.style.width  = CW+'px'; el.style.height = CH+'px';
+      el.className = 'cell'; el.innerHTML = '';
+      el.style.left = cellLeft(i%COLS)+'px'; el.style.top = cellTop(Math.floor(i/COLS))+'px';
+      el.style.width = CW+'px'; el.style.height = CH+'px';
     });
 
-    // Update prize state
-    roundWin    += tPrize;
-    totalPrize  += tPrize;
-    paidThisSpin += tPrize;
+    /* Update state with DISPLAY prize (budget-capped) */
+    paidThisSpin += displayPrize;
+    roundWin     += displayPrize;
+    totalPrize   += displayPrize;
 
     if (cascades > 0) curMult = MULT_STEPS[Math.min(cascades-1, MULT_STEPS.length-1)];
     cascades++;
     updateUI();
-    showWinText('+'+fmtRp(tPrize)+' ×'+mult);
+    if (displayPrize > 0) showWinText('+'+fmtRp(displayPrize)+' ×'+mult);
 
     await gravityRefill();
     await sleep(200);
 
-    if (tPrize > 3000) spawnConfetti(tPrize > 10000 ? 60 : 25);
+    if (displayPrize > 3000) spawnConfetti(displayPrize > 10000 ? 60 : 25);
 
-    // If spinTarget is reached, stop tumbling even if more clusters exist
-    if (spinTarget > 0 && paidThisSpin >= spinTarget * 0.95) break;
+    /*
+      STOP CONDITION: 
+      - If spinTarget reached (or we're within rounding), stop tumbling.
+        This prevents extra cascades from adding unexpected prize.
+      - On zonk spins, allow natural cascades (board was generated cluster-free
+        so this shouldn't fire, but just in case: cap at 0).
+    */
+    if (!isZonk && paidThisSpin >= spinTarget) break;
+    if (isZonk && paidThisSpin > 0) break; // safety: zonk should never win
   }
 
+  /* Show spin modal if meaningful win */
   if (roundWin >= 2000) {
     await sleep(400);
     await openModal(roundWin, false);
@@ -671,7 +812,7 @@ async function tumbleLoop(spinTarget) {
 }
 
 /* ============================================================
-   GRAVITY + REFILL — slower drop
+   GRAVITY + REFILL
 ============================================================ */
 async function gravityRefill() {
   const promises = [];
@@ -683,68 +824,34 @@ async function gravityRefill() {
     }
     const missing = ROWS - existing.length;
     for (let k = 0; k < missing; k++) existing.push(rndSym());
-    existing.reverse(); // top→bottom
+    existing.reverse();
 
     for (let r = 0; r < ROWS; r++) {
       const idx = r*COLS+c;
-      const sym = existing[r];
-      board[idx] = sym;
-
+      board[idx] = existing[r];
       const el = getCell(idx);
       if (!el) continue;
-      el.style.left   = cellLeft(c)+'px';
-      el.style.top    = cellTop(r)+'px';
-      el.style.width  = CW+'px';
-      el.style.height = CH+'px';
-      el.className    = 'cell';
-      setSymInEl(el, sym);
-
+      el.style.left = cellLeft(c)+'px'; el.style.top = cellTop(r)+'px';
+      el.style.width = CW+'px'; el.style.height = CH+'px';
+      el.className = 'cell';
+      setSymInEl(el, board[idx]);
       const fallRows = r < missing ? (ROWS - r + 1) : 1;
       const dy       = -(fallRows*(CH+GAP) + CH);
       el.style.setProperty('--dy', dy+'px');
       const delay = c*35 + r*25;
       el.style.animationDelay = delay+'ms';
       el.classList.add('dropping');
-
-      const p = new Promise(res => {
+      promises.push(new Promise(res => {
         setTimeout(() => {
           el.classList.remove('dropping');
           el.style.animationDelay = '';
           el.style.removeProperty('--dy');
           res();
         }, delay + 700);
-      });
-      promises.push(p);
+      }));
     }
   }
   await Promise.all(promises);
-}
-
-/* ============================================================
-   CLUSTER FINDER — BFS 4+ adjacent same symbol
-============================================================ */
-function findClusters() {
-  const visited  = new Array(N).fill(false);
-  const clusters = [];
-  for (let start = 0; start < N; start++) {
-    if (visited[start] || !board[start]) continue;
-    const sym = board[start];
-    const q = [start], found = [start];
-    visited[start] = true;
-    while (q.length) {
-      const cur = q.shift();
-      const r = Math.floor(cur/COLS), c = cur%COLS;
-      [[r-1,c],[r+1,c],[r,c-1],[r,c+1]].forEach(([nr,nc]) => {
-        if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) return;
-        const ni = nr*COLS+nc;
-        if (!visited[ni] && board[ni] && board[ni].id === sym.id) {
-          visited[ni] = true; q.push(ni); found.push(ni);
-        }
-      });
-    }
-    if (found.length >= 4) clusters.push({ sym, cells: found });
-  }
-  return clusters;
 }
 
 /* ============================================================
@@ -753,14 +860,12 @@ function findClusters() {
 function showBurst(cellIdx, text) {
   const grid = document.getElementById('slotGrid');
   const r = Math.floor(cellIdx/COLS), c = cellIdx%COLS;
-  const x = cellLeft(c) + CW/2;
-  const y = cellTop(r)  + CH/2;
+  const x = cellLeft(c) + CW/2, y = cellTop(r) + CH/2;
   const b = document.createElement('div');
   b.className = 'mburst';
-  b.style.left     = x+'px';
-  b.style.top      = y+'px';
+  b.style.left = x+'px'; b.style.top = y+'px';
   b.style.fontSize = 'clamp(.6rem,2vw,.88rem)';
-  b.textContent    = text;
+  b.textContent = text;
   grid.appendChild(b);
   setTimeout(() => b.remove(), 1500);
 }
@@ -813,9 +918,7 @@ function resetAll() {
   document.getElementById('modal').classList.remove('open');
   newSession();
   for (let i = 0; i < N; i++) board[i] = rndSym();
-  renderGrid();
-  buildPips();
-  updateUI();
+  renderGrid(); buildPips(); updateUI();
   const btn = document.getElementById('btnSpin');
   btn.disabled    = false;
   btn.textContent = '⚡ PUTAR!';
@@ -843,7 +946,7 @@ function buildPips() {
 }
 
 /* ============================================================
-   CONFETTI — green palette
+   CONFETTI
 ============================================================ */
 function spawnConfetti(count) {
   const c = document.getElementById('confetti');
@@ -859,7 +962,7 @@ function spawnConfetti(count) {
 }
 
 /* ============================================================
-   BG CANVAS — green nebula
+   BG CANVAS
 ============================================================ */
 function initBg() {
   const cv  = document.getElementById('bgCanvas');
@@ -915,7 +1018,7 @@ function initBg() {
 }
 
 /* ============================================================
-   START — wait for fonts + layout
+   START
 ============================================================ */
 document.fonts.ready.then(() => {
   requestAnimationFrame(() => requestAnimationFrame(() => init()));
