@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Gates of THR — Lebaran Edition</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700;900&family=Cinzel:wght@400;600;700&family=Baloo+2:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{width:100%;height:100%;overflow:hidden}
+
+body{
+  font-family:'Baloo 2',cursive;
+  background:#010f04;
+  display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
+  min-height:100vh;overflow:hidden;position:relative;
+}
+
+#bgCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
+
+.cloud-deco{position:fixed;pointer-events:none;z-index:1;opacity:.07;animation:cloudMove linear infinite;filter:blur(2px)}
+@keyframes cloudMove{from{transform:translateX(-150px)}to{transform:translateX(110vw)}}
+
+#app{
+  position:relative;z-index:10;
+  width:100%;max-width:480px;
+  height:100vh;
+  display:flex;flex-direction:column;
+}
+
+/* TOP BAR */
+.topbar{
+  flex:0 0 auto;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 14px 6px;
+  background:linear-gradient(180deg,rgba(4,28,10,.98),rgba(3,20,8,.95));
+  border-bottom:1.5px solid rgba(80,220,120,.22);
+}
+.logo-text{font-family:'Cinzel Decorative',serif;font-size:.95rem;color:#4dff88;text-shadow:0 0 14px rgba(60,255,110,.7),0 0 30px rgba(20,180,60,.35);line-height:1.1}
+.logo-sub{display:block;font-family:'Cinzel',serif;font-size:.38rem;letter-spacing:4px;color:rgba(100,255,150,.42);margin-top:2px}
+.balance-wrap{text-align:right}
+.balance-lbl{font-size:.48rem;letter-spacing:3px;color:rgba(80,220,120,.42);text-transform:uppercase}
+.balance-val{font-family:'Cinzel Decorative',serif;font-size:1rem;color:#4dff88;text-shadow:0 0 10px rgba(60,255,110,.6)}
+
+/* TITLE */
+.title-strip{
+  flex:0 0 auto;text-align:center;padding:4px 10px 2px;
+  background:linear-gradient(180deg,rgba(3,20,8,.95),rgba(2,14,6,.9));
+  border-bottom:1px solid rgba(60,200,90,.16);
+}
+.game-title{font-family:'Cinzel Decorative',serif;font-size:clamp(.9rem,3.2vw,1.25rem);color:#4dff88;text-shadow:0 0 18px rgba(60,255,110,.85),0 0 40px rgba(30,180,60,.45),0 2px 0 #013a12;letter-spacing:2px;line-height:1}
+.game-sub{font-family:'Cinzel',serif;font-size:.5rem;letter-spacing:5px;color:rgba(80,220,120,.42);text-transform:uppercase;margin-top:1px}
+
+/* PAY STRIP */
+.pay-strip{
+  flex:0 0 auto;display:flex;gap:3px;justify-content:center;flex-wrap:wrap;
+  padding:3px 8px;background:rgba(2,14,6,.88);border-bottom:1px solid rgba(60,200,90,.12);
+}
+.pay-badge{background:rgba(6,40,16,.78);border:1px solid rgba(50,180,80,.3);border-radius:7px;padding:2px 5px;font-size:.46rem;color:rgba(120,255,160,.68);font-family:'Cinzel',serif;display:flex;align-items:center;gap:3px;white-space:nowrap}
+.pay-badge b{color:rgba(180,255,200,.9)}
+
+/* GRID SECTION */
+.grid-section{
+  flex:1 1 0;min-height:0;position:relative;
+  background:linear-gradient(180deg,rgba(2,14,6,.92),rgba(1,8,3,.97));
+  overflow:hidden;
+  border-top:1px solid rgba(60,200,90,.13);
+  border-bottom:1px solid rgba(60,200,90,.13);
+}
+.grid-section::before,.grid-section::after{content:'';position:absolute;top:0;bottom:0;width:16px;z-index:20;pointer-events:none}
+.grid-section::before{left:0;background:linear-gradient(90deg,rgba(2,14,6,.88),transparent)}
+.grid-section::after{right:0;background:linear-gradient(270deg,rgba(2,14,6,.88),transparent)}
+
+.grid-glow{position:absolute;inset:0;pointer-events:none;z-index:1;background:radial-gradient(ellipse at 50% 50%,rgba(30,160,60,.07) 0%,transparent 75%);animation:glowPulse 4s ease-in-out infinite alternate}
+@keyframes glowPulse{0%{opacity:.5}100%{opacity:1}}
+
+.win-ov{
+  position:absolute;top:10px;left:50%;transform:translateX(-50%);
+  z-index:40;pointer-events:none;
+  font-family:'Cinzel Decorative',serif;font-size:1rem;
+  color:#4dff88;text-shadow:0 0 12px #4dff88,0 0 28px rgba(30,200,70,.8);
+  white-space:nowrap;opacity:0;
+}
+.win-ov.show{animation:winOvAnim 2.5s ease forwards}
+@keyframes winOvAnim{
+  0%{opacity:0;transform:translateX(-50%) scale(.6)}
+  15%{opacity:1;transform:translateX(-50%) scale(1.12)}
+  65%{opacity:1;transform:translateX(-50%) scale(1)}
+  100%{opacity:0;transform:translateX(-50%) scale(.95)}
+}
+
+/* SLOT GRID — absolutely positioned */
+#slotGrid{position:absolute;z-index:10}
+
+/* CELL */
+.cell{
+  position:absolute;border-radius:10px;
+  background:linear-gradient(145deg,rgba(6,40,18,.82),rgba(3,22,10,.94));
+  border:1.5px solid rgba(40,160,70,.28);
+  overflow:hidden;display:flex;align-items:center;justify-content:center;
+  will-change:transform,opacity;
+}
+.cell::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,.04) 0%,transparent 55%);border-radius:inherit;pointer-events:none}
+
+.sym{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;line-height:1;user-select:none;pointer-events:none}
+.sym-e{display:block;font-size:clamp(1.1rem,3vw,1.75rem);filter:drop-shadow(0 0 4px rgba(80,255,120,.22))}
+
+/* DROP-IN — slower, more satisfying */
+@keyframes dropIn{
+  0%  {transform:translateY(var(--dy));opacity:0}
+  50% {opacity:1}
+  82% {transform:translateY(7px)}
+  92% {transform:translateY(-3px)}
+  100%{transform:translateY(0);opacity:1}
+}
+.cell.dropping{animation:dropIn .65s cubic-bezier(.22,.8,.36,1) both}
+
+/* BLAST */
+@keyframes blastOut{
+  0%  {transform:scale(1);opacity:1}
+  30% {transform:scale(1.35) rotate(5deg);opacity:1}
+  100%{transform:scale(0) rotate(-10deg);opacity:0}
+}
+.cell.blasting{animation:blastOut .45s ease-in forwards}
+
+/* WIN GLOW */
+@keyframes winPulse{
+  0%  {box-shadow:0 0 5px rgba(60,255,100,.45) inset;background:rgba(4,40,16,.68)}
+  100%{box-shadow:0 0 22px rgba(60,255,100,.9) inset,0 0 10px rgba(60,255,100,.5);background:rgba(6,80,24,.82)}
+}
+.cell.win-glow{animation:winPulse .45s ease-in-out infinite alternate;border-color:rgba(60,255,100,.75)!important}
+.cell.super-glow{animation:winPulse .32s ease-in-out infinite alternate;border-color:rgba(80,255,120,1)!important}
+
+/* BURST TEXT */
+.mburst{position:absolute;pointer-events:none;z-index:50;font-family:'Cinzel Decorative',serif;font-weight:900;color:#4dff88;text-shadow:0 0 10px #4dff88,0 0 25px rgba(30,200,70,.8);transform:translate(-50%,-50%);animation:burstAnim 1.4s ease-out forwards;white-space:nowrap}
+@keyframes burstAnim{
+  0%  {transform:translate(-50%,-50%) scale(0) rotate(-8deg);opacity:1}
+  50% {transform:translate(-50%,-90%) scale(1.3) rotate(2deg);opacity:1}
+  100%{transform:translate(-50%,-150%) scale(1.1) rotate(0deg);opacity:0}
+}
+
+/* BOTTOM */
+.bottom{flex:0 0 auto;background:linear-gradient(0deg,rgba(2,14,6,1),rgba(4,22,10,.98));border-top:2px solid rgba(50,180,80,.32);padding:8px 12px 10px}
+.stats-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.stat-box{background:rgba(0,0,0,.45);border:1px solid rgba(40,160,70,.28);border-radius:10px;padding:4px 10px;text-align:center;min-width:82px}
+.stat-lbl{font-size:.46rem;letter-spacing:3px;color:rgba(100,220,130,.45);text-transform:uppercase}
+.stat-val{font-family:'Cinzel Decorative',serif;font-size:.9rem;color:#4dff88;text-shadow:0 0 8px rgba(60,255,100,.5)}
+.stat-val.flash{animation:flashNum .5s ease}
+@keyframes flashNum{0%,100%{transform:scale(1)}50%{transform:scale(1.35);color:#fff}}
+
+.pips-wrap{display:flex;flex-direction:column;align-items:center;gap:3px}
+.pips-lbl{font-size:.44rem;letter-spacing:3px;color:rgba(100,220,130,.35);text-transform:uppercase}
+.pips-row{display:flex;gap:5px}
+.pip{width:13px;height:13px;border-radius:50%;border:1.5px solid rgba(80,200,100,.26);background:transparent;transition:all .35s}
+.pip.on{background:radial-gradient(circle,#4dff88,#22cc55);border-color:#4dff88;box-shadow:0 0 7px rgba(60,255,100,.65)}
+
+/* SPIN BUTTON */
+.btn-spin{
+  width:100%;padding:15px;border:none;border-radius:14px;
+  background:linear-gradient(180deg,#1a8c3e 0%,#0d6128 45%,#073d18 100%);
+  font-family:'Cinzel Decorative',serif;font-size:1.1rem;letter-spacing:3px;color:#c8ffe0;
+  cursor:pointer;position:relative;overflow:hidden;
+  box-shadow:0 5px 0 rgba(0,0,0,.6),0 0 28px rgba(40,200,80,.28),inset 0 1px 0 rgba(255,255,255,.14);
+  transition:transform .12s,box-shadow .12s;text-shadow:0 1px 3px rgba(0,0,0,.5);margin-bottom:7px;
+}
+.btn-spin::before{content:'';position:absolute;top:0;left:-100%;width:100%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.2),transparent);animation:glossSlide 3s infinite}
+@keyframes glossSlide{0%{left:-100%}100%{left:100%}}
+.btn-spin:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 7px 0 rgba(0,0,0,.6),0 0 40px rgba(50,220,90,.42),inset 0 1px 0 rgba(255,255,255,.14)}
+.btn-spin:active:not(:disabled){transform:translateY(3px);box-shadow:0 2px 0 rgba(0,0,0,.6)}
+.btn-spin:disabled{opacity:.42;cursor:not-allowed}
+.btn-spin:disabled::before{display:none}
+
+.row2{display:flex;gap:8px}
+.btn-sm{flex:1;padding:7px;background:rgba(4,40,16,.55);border:1.5px solid rgba(40,160,70,.35);border-radius:9px;color:rgba(100,230,140,.75);font-family:'Baloo 2',cursive;font-size:.7rem;font-weight:700;cursor:pointer;letter-spacing:1px;transition:all .2s}
+.btn-sm:hover{background:rgba(8,60,24,.7);color:#a0ffb8;border-color:rgba(80,200,110,.52)}
+
+/* CONFETTI */
+#confetti{position:fixed;inset:0;pointer-events:none;z-index:500;overflow:hidden}
+.cp{position:absolute;top:-22px;animation:cpFall linear forwards;border-radius:2px}
+@keyframes cpFall{0%{transform:translateY(0) rotate(0deg);opacity:1}85%{opacity:1}100%{transform:translateY(108vh) rotate(900deg);opacity:0}}
+
+/* MODAL */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.9);backdrop-filter:blur(10px);z-index:300;display:none;align-items:center;justify-content:center;padding:20px}
+.modal-bg.open{display:flex;animation:fadeIn .35s}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.modal-card{
+  background:linear-gradient(160deg,#011a08,#000e03);
+  border:3px solid #4dff88;border-radius:26px;
+  padding:30px 24px 24px;text-align:center;max-width:340px;width:100%;
+  position:relative;animation:cardPop .7s cubic-bezier(.34,1.56,.64,1);
+  box-shadow:0 0 80px rgba(60,255,100,.35),0 0 200px rgba(20,160,50,.18);
+}
+@keyframes cardPop{0%{transform:scale(.25) rotate(-8deg);opacity:0}100%{transform:scale(1) rotate(0deg);opacity:1}}
+.modal-card::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(60,255,100,.1),transparent 60%);border-radius:inherit;pointer-events:none}
+.mc-deco{font-size:3.6rem;line-height:1;animation:decoFloat 1s ease-in-out infinite alternate;display:block}
+@keyframes decoFloat{0%{transform:translateY(0) rotate(-4deg)}100%{transform:translateY(-12px) rotate(4deg)}}
+.mc-label{font-family:'Cinzel',serif;font-size:.65rem;letter-spacing:5px;color:rgba(100,255,150,.55);margin:7px 0 3px}
+.mc-type{font-family:'Cinzel Decorative',serif;font-size:clamp(1.5rem,5.5vw,2.2rem);color:#4dff88;text-shadow:0 0 20px #4dff88,0 0 50px rgba(30,200,70,.7);animation:typePulse .5s ease-in-out infinite alternate;line-height:1.1}
+@keyframes typePulse{0%{transform:scale(1)}100%{transform:scale(1.05)}}
+.mc-syms{font-size:1.9rem;letter-spacing:6px;margin:8px 0 4px}
+.mc-amount{font-family:'Cinzel Decorative',serif;font-size:2rem;color:#fff;text-shadow:0 0 28px rgba(60,255,100,.82);margin:4px 0 6px}
+.mc-sub{color:rgba(120,255,160,.55);font-size:.8rem;line-height:1.5;margin:4px 0 14px}
+.mc-note{background:rgba(60,255,100,.06);border:1px solid rgba(60,255,100,.2);border-radius:10px;padding:5px 10px;font-size:.58rem;color:rgba(100,220,130,.55);letter-spacing:.5px;margin-bottom:14px}
+.btn-ok{background:linear-gradient(135deg,#22cc55,#0d8832);border:none;border-radius:50px;padding:13px 38px;font-family:'Cinzel Decorative',serif;font-size:.95rem;letter-spacing:2px;color:#c8ffe0;cursor:pointer;box-shadow:0 4px 0 rgba(4,60,16,.8);transition:transform .15s}
+.btn-ok:hover{transform:scale(1.05)}
+</style>
+</head>
+<body>
+
+<canvas id="bgCanvas"></canvas>
+<div class="cloud-deco" style="top:8%;font-size:3rem;animation-duration:38s;animation-delay:-8s">☁</div>
+<div class="cloud-deco" style="top:23%;font-size:1.8rem;animation-duration:30s;animation-delay:-5s">✨</div>
+<div class="cloud-deco" style="top:68%;font-size:2.5rem;animation-duration:45s;animation-delay:-20s">☁</div>
+<div class="cloud-deco" style="top:82%;font-size:1.5rem;animation-duration:33s;animation-delay:-13s">💫</div>
+<div id="confetti"></div>
+
+<!-- MODAL -->
+<div class="modal-bg" id="modal">
+  <div class="modal-card">
+    <span class="mc-deco" id="mcDeco">🎁</span>
+    <div class="mc-label">✦ KAMU MENDAPAT ✦</div>
+    <div class="mc-type"  id="mcType">BIG WIN!</div>
+    <div class="mc-syms"  id="mcSyms">🎁🎁🎁🎁</div>
+    <div class="mc-amount"id="mcAmount">Rp 20.000</div>
+    <div class="mc-sub"   id="mcSub">Alhamdulillah!</div>
+    <div class="mc-note">✦ Hadiah THR sudah ditentukan sebelum permainan dimulai ✦</div>
+    <button class="btn-ok" id="btnOk">LANJUT ✨</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div class="topbar">
+    <div class="logo-text">Gates of THR<span class="logo-sub">✦ LEBARAN EDITION ✦</span></div>
+    <div class="balance-wrap">
+      <div class="balance-lbl">Total THR</div>
+      <div class="balance-val" id="totalDisp">Rp 0</div>
+    </div>
+  </div>
+  <div class="title-strip">
+    <div class="game-title">⚡ GATES OF THR ⚡</div>
+    <div class="game-sub">Cluster Pays · Tumble · 5 Spins</div>
+  </div>
+  <div class="pay-strip">
+    <div class="pay-badge">🎁 ×8 <b>→ 20K</b></div>
+    <div class="pay-badge">🌙 ×8 <b>→ 8K</b></div>
+    <div class="pay-badge">⭐ ×8 <b>→ 4K</b></div>
+    <div class="pay-badge">🏮 ×8 <b>→ 2K</b></div>
+    <div class="pay-badge">🌛 ×8 <b>→ 1K</b></div>
+  </div>
+  <div class="grid-section">
+    <div class="grid-glow"></div>
+    <div class="win-ov" id="winOv"></div>
+    <div id="slotGrid"></div>
+  </div>
+  <div class="bottom">
+    <div class="stats-row">
+      <div class="stat-box">
+        <div class="stat-lbl">Win Putaran</div>
+        <div class="stat-val" id="roundDisp">Rp 0</div>
+      </div>
+      <div class="pips-wrap">
+        <div class="pips-lbl">Sisa Spin</div>
+        <div class="pips-row" id="pipsRow"></div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-lbl">Multiplier</div>
+        <div class="stat-val" id="multDisp">×1</div>
+      </div>
+    </div>
+    <button class="btn-spin" id="btnSpin" onclick="doSpin()">⚡ PUTAR!</button>
+    <div class="row2">
+      <button class="btn-sm" onclick="resetAll()">🔄 Reset</button>
+      <button class="btn-sm" onclick="showInfo()">💎 Info</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   CONFIG
+============================================================ */
+const COLS = 6, ROWS = 5, N = COLS * ROWS;
+const GAP    = 3;
+const PAD_H  = 18;
+const PAD_V  = 8;
+const MAX_SPINS = 5;
+
+/*
+  PRIZE SYSTEM — fully predetermined:
+  At session start we pick ONE of three exact prize tiers:
+    10,000  /  20,000  /  30,000
+  The engine then distributes this budget across spins via
+  "scripted" cluster injections. Visual randomness is cosmetic;
+  the math always lands exactly on the target.
+*/
+const PRIZE_TIERS = [10000, 20000, 30000];
+
+/* Symbol definitions */
+const SYMS = [
+  { id:'gift',    e:'🎁', w:6,  p:{4:500,  5:1000, 6:1500, 7:2000, 8:3000, 9:4000, 10:5000, 11:6000, 12:8000  }},
+  { id:'moon',    e:'🌙', w:9,  p:{4:300,  5:600,  6:1000, 7:1500, 8:2500, 9:3500, 10:4500, 11:5500, 12:7000  }},
+  { id:'star',    e:'⭐',  w:11, p:{4:150,  5:300,  6:500,  7:800,  8:1500, 9:2000, 10:2500, 11:3000, 12:4000  }},
+  { id:'lantern', e:'🏮', w:13, p:{4:80,   5:150,  6:250,  7:400,  8:800,  9:1000, 10:1200, 11:1400, 12:1600  }},
+  { id:'crescent',e:'🌛', w:15, p:{4:40,   5:80,   6:130,  7:200,  8:400,  9:500,  10:600,  11:700,  12:800   }},
+];
+const MULT_STEPS = [2, 3, 5, 8, 10, 15, 20];
+
+const POOL = [];
+SYMS.forEach(s => { for (let i = 0; i < s.w; i++) POOL.push(s); });
+
+/* ============================================================
+   SESSION PRIZE PLAN
+   We precompute exactly how many Rupiah each spin must yield.
+   e.g. for 20,000 across 5 spins, split as [0,6000,0,12000,2000]
+============================================================ */
+function buildPrizePlan(total) {
+  /*
+    Distribute total across MAX_SPINS.
+    Rules:
+    - At least 2 spins must produce 0 (zonk — pure visual drama)
+    - The rest share the total, with bigger amounts on spin 2 & 4
+    - Each spin amount must be achievable by realistic cluster prizes
+    We use a simple weighted split.
+  */
+  const weights = [0, 4, 0, 5, 1]; // spin 1-5 relative weights (0=zonk)
+  const wSum = weights.reduce((a,b)=>a+b,0);
+  const plan = weights.map(w => Math.round((w / wSum) * total));
+  // Fix rounding: adjust last non-zero to make sum exact
+  const diff = total - plan.reduce((a,b)=>a+b,0);
+  for (let i = plan.length - 1; i >= 0; i--) {
+    if (plan[i] > 0) { plan[i] += diff; break; }
+  }
+  return plan; // [spinPrize1, spinPrize2, ..., spinPrize5]
+}
+
+/* ============================================================
+   STATE
+============================================================ */
+let board       = new Array(N).fill(null);
+let spinsLeft   = MAX_SPINS;
+let totalPrize  = 0;
+let roundWin    = 0;
+let curMult     = 1;
+let animRunning = false;
+let gameOver    = false;
+let spinCount   = 0; // 0-indexed current spin (0..4)
+let sessionTarget = 0;
+let prizePlan     = []; // prize per spin, index 0..4
+let CW = 0, CH = 0;
+
+function rng() { return Math.random(); }
+function rndSym() { return POOL[Math.floor(rng() * POOL.length)]; }
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function fmtRp(n) { return 'Rp ' + Math.round(n).toLocaleString('id-ID'); }
+function fmtK(n)  { return n >= 1000 ? (n/1000).toFixed(n%1000?1:0)+'K' : n; }
+
+/* ============================================================
+   GRID GEOMETRY
+============================================================ */
+function measureGrid() {
+  const section = document.querySelector('.grid-section');
+  const availW = section.clientWidth  - PAD_H*2 - GAP*(COLS-1);
+  const availH = section.clientHeight - PAD_V*2 - GAP*(ROWS-1);
+  CW = Math.floor(availW / COLS);
+  CH = Math.floor(availH / ROWS);
+
+  const grid   = document.getElementById('slotGrid');
+  const totalW = CW*COLS + GAP*(COLS-1);
+  const totalH = CH*ROWS + GAP*(ROWS-1);
+  grid.style.left   = Math.floor((section.clientWidth  - totalW)/2) + 'px';
+  grid.style.top    = Math.floor((section.clientHeight - totalH)/2) + 'px';
+  grid.style.width  = totalW + 'px';
+  grid.style.height = totalH + 'px';
+}
+
+function cellLeft(c) { return c*(CW+GAP); }
+function cellTop(r)  { return r*(CH+GAP); }
+
+/* ============================================================
+   RENDER
+============================================================ */
+function renderGrid() {
+  measureGrid();
+  const grid = document.getElementById('slotGrid');
+  grid.innerHTML = '';
+  for (let i = 0; i < N; i++) {
+    const r = Math.floor(i/COLS), c = i%COLS;
+    const el = document.createElement('div');
+    el.className = 'cell';
+    el.id = 'c'+i;
+    el.style.left   = cellLeft(c)+'px';
+    el.style.top    = cellTop(r)+'px';
+    el.style.width  = CW+'px';
+    el.style.height = CH+'px';
+    if (board[i]) setSymInEl(el, board[i]);
+    grid.appendChild(el);
+  }
+}
+
+function setSymInEl(el, sym) {
+  el.innerHTML = '';
+  const d = document.createElement('div'); d.className = 'sym';
+  const s = document.createElement('span'); s.className = 'sym-e'; s.textContent = sym.e;
+  d.appendChild(s); el.appendChild(d);
+}
+
+function getCell(i) { return document.getElementById('c'+i); }
+
+/* ============================================================
+   INIT
+============================================================ */
+function init() {
+  newSession();
+  for (let i = 0; i < N; i++) board[i] = rndSym();
+  renderGrid();
+  buildPips();
+  updateUI();
+  initBg();
+  window.addEventListener('resize', () => renderGrid());
+}
+
+function newSession() {
+  sessionTarget = PRIZE_TIERS[Math.floor(rng() * PRIZE_TIERS.length)];
+  prizePlan     = buildPrizePlan(sessionTarget);
+  spinCount     = 0;
+  spinsLeft     = MAX_SPINS;
+  totalPrize    = 0;
+  roundWin      = 0;
+  curMult       = 1;
+  gameOver      = false;
+  animRunning   = false;
+}
+
+/* ============================================================
+   SCRIPTED BOARD GENERATION
+   Given a target prize for this spin, we:
+   1. If target > 0: inject a cluster whose base prize ≈ target
+   2. Fill rest randomly (cosmetic only)
+   The cluster injection tries to find a symbol+size combo
+   whose raw payout matches the target (ignoring multiplier here;
+   tumble cascades may split target across multiple clusters).
+============================================================ */
+function generateBoard(spinTarget) {
+  const b = [];
+  for (let i = 0; i < N; i++) b.push(rndSym());
+
+  if (spinTarget <= 0) return b; // zonk spin — pure random
+
+  /*
+    Find best (sym, size) pair where sym.p[size] is closest to spinTarget.
+    We aim for multiplier=1 on first cascade so base = target.
+  */
+  let bestSym  = SYMS[0];
+  let bestSize = 4;
+  let bestDiff = Infinity;
+
+  for (const sym of SYMS) {
+    for (const [kStr, val] of Object.entries(sym.p)) {
+      const k = Number(kStr);
+      if (k > N) continue;
+      const diff = Math.abs(val - spinTarget);
+      if (diff < bestDiff) { bestDiff = diff; bestSym = sym; bestSize = k; }
+    }
+  }
+
+  // Clamp cluster size to reasonable grid coverage
+  const clusterSize = Math.min(bestSize, Math.floor(N * 0.45));
+
+  // BFS-plant cluster near centre
+  const planted = new Set();
+  const starts  = [13, 14, 15, 19, 20, 21, 7, 8, 9];
+  planted.add(starts[Math.floor(rng() * starts.length)]);
+  for (let attempt = 0; planted.size < clusterSize && attempt < 500; attempt++) {
+    const arr = [...planted];
+    const src = arr[Math.floor(rng() * arr.length)];
+    const r   = Math.floor(src / COLS), c = src % COLS;
+    const nbrs = [];
+    if (r > 0)      nbrs.push((r-1)*COLS+c);
+    if (r < ROWS-1) nbrs.push((r+1)*COLS+c);
+    if (c > 0)      nbrs.push(r*COLS+(c-1));
+    if (c < COLS-1) nbrs.push(r*COLS+(c+1));
+    const free = nbrs.filter(n => !planted.has(n));
+    if (free.length) planted.add(free[Math.floor(rng() * free.length)]);
+  }
+  planted.forEach(idx => { b[idx] = bestSym; });
+
+  // Scatter a few same-symbol outside the cluster to add visual noise
+  // (won't form their own cluster of 4 since they're isolated)
+  let extras = Math.floor(rng() * 3);
+  for (let i = 0; i < N && extras > 0; i++) {
+    if (!planted.has(i)) {
+      b[i] = rndSym(); // keep random — we don't want accidental extra clusters
+    }
+  }
+
+  return b;
+}
+
+/* ============================================================
+   SPIN ENTRY
+============================================================ */
+async function doSpin() {
+  if (animRunning || gameOver) return;
+  if (spinsLeft <= 0) { endGame(); return; }
+
+  animRunning = true;
+  const thisSpinIdx = MAX_SPINS - spinsLeft; // 0..4
+  spinsLeft--;
+  spinCount++;
+  roundWin = 0;
+  curMult  = 1;
+  updateUI();
+
+  const btn = document.getElementById('btnSpin');
+  btn.disabled = true;
+
+  const spinTarget = prizePlan[thisSpinIdx]; // exactly how much this spin must pay
+  board = generateBoard(spinTarget);
+
+  await dropAllIn();
+  await tumbleLoop(spinTarget);
+
+  /*
+    RECONCILE: After tumbles, if totalPrize drifted from plan,
+    we silently correct. The last spin always aligns the final total.
+  */
+  if (spinsLeft === 0) {
+    // Final adjustment — make totalPrize exactly sessionTarget
+    const correction = sessionTarget - totalPrize;
+    if (correction !== 0) {
+      totalPrize = sessionTarget;
+      roundWin  += correction; // may be small ± rounding
+    }
+  }
+
+  buildPips();
+  updateUI();
+  animRunning = false;
+
+  if (spinsLeft <= 0) {
+    gameOver = true;
+    btn.textContent = '✦ SELESAI ✦';
+    await sleep(800);
+    endGame();
+  } else {
+    btn.disabled = false;
+  }
+}
+
+/* ============================================================
+   DROP ALL IN — slower, col by col
+============================================================ */
+async function dropAllIn() {
+  // Fix all cell positions first
+  for (let i = 0; i < N; i++) {
+    const r = Math.floor(i/COLS), c = i%COLS;
+    const el = getCell(i);
+    if (!el) continue;
+    el.style.left   = cellLeft(c)+'px';
+    el.style.top    = cellTop(r)+'px';
+    el.style.width  = CW+'px';
+    el.style.height = CH+'px';
+    el.className    = 'cell';
+    setSymInEl(el, board[i]);
+  }
+
+  const colDone = [];
+  for (let c = 0; c < COLS; c++) {
+    const p = new Promise(res => {
+      let done = 0;
+      for (let r = 0; r < ROWS; r++) {
+        const idx = r*COLS+c;
+        const el  = getCell(idx);
+        if (!el) { done++; if (done === ROWS) res(); continue; }
+
+        const dy    = -(cellTop(r) + CH + (r+1)*12);
+        el.style.setProperty('--dy', dy+'px');
+        const delay = c*55 + r*35; // slower stagger
+        el.style.animationDelay = delay+'ms';
+        el.classList.add('dropping');
+
+        setTimeout(() => {
+          el.classList.remove('dropping');
+          el.style.animationDelay = '';
+          el.style.removeProperty('--dy');
+          done++; if (done === ROWS) res();
+        }, delay + 700); // wait full anim duration
+      }
+    });
+    colDone.push(p);
+  }
+  await Promise.all(colDone);
+  await sleep(100); // brief pause after all land
+}
+
+/* ============================================================
+   TUMBLE LOOP
+   spinTarget: how much this spin must pay in total.
+   We track paidThisSpin and stop tumbling once we hit target.
+============================================================ */
+async function tumbleLoop(spinTarget) {
+  let cascades    = 0;
+  let paidThisSpin = 0;
+
+  while (true) {
+    const clusters = findClusters();
+    if (!clusters.length) break;
+
+    // Highlight
+    const winSet = new Set();
+    clusters.forEach(cl => cl.cells.forEach(i => winSet.add(i)));
+    winSet.forEach(i => {
+      const el = getCell(i);
+      if (el) el.classList.add(cascades >= 2 ? 'super-glow' : 'win-glow');
+    });
+    await sleep(600); // longer highlight pause
+
+    // Calculate this cascade's prize
+    let tPrize = 0;
+    const mult = curMult;
+    clusters.forEach(cl => {
+      const cnt  = cl.cells.length;
+      const keys = Object.keys(cl.sym.p).map(Number).sort((a,b)=>a-b);
+      let base = 0; keys.forEach(k => { if (cnt >= k) base = cl.sym.p[k]; });
+      tPrize += base * mult;
+      const ci = cl.cells[Math.floor(cl.cells.length/2)];
+      showBurst(ci, '+'+fmtK(base * mult));
+    });
+    tPrize = Math.round(tPrize);
+
+    // Blast out
+    winSet.forEach(i => {
+      const el = getCell(i);
+      if (el) { el.classList.remove('win-glow','super-glow'); el.classList.add('blasting'); }
+      board[i] = null;
+    });
+    await sleep(480);
+    winSet.forEach(i => {
+      const el = getCell(i);
+      if (!el) return;
+      el.className    = 'cell'; el.innerHTML = '';
+      el.style.left   = cellLeft(i%COLS)+'px';
+      el.style.top    = cellTop(Math.floor(i/COLS))+'px';
+      el.style.width  = CW+'px'; el.style.height = CH+'px';
+    });
+
+    // Update prize state
+    roundWin    += tPrize;
+    totalPrize  += tPrize;
+    paidThisSpin += tPrize;
+
+    if (cascades > 0) curMult = MULT_STEPS[Math.min(cascades-1, MULT_STEPS.length-1)];
+    cascades++;
+    updateUI();
+    showWinText('+'+fmtRp(tPrize)+' ×'+mult);
+
+    await gravityRefill();
+    await sleep(200);
+
+    if (tPrize > 3000) spawnConfetti(tPrize > 10000 ? 60 : 25);
+
+    // If spinTarget is reached, stop tumbling even if more clusters exist
+    if (spinTarget > 0 && paidThisSpin >= spinTarget * 0.95) break;
+  }
+
+  if (roundWin >= 2000) {
+    await sleep(400);
+    await openModal(roundWin, false);
+  }
+}
+
+/* ============================================================
+   GRAVITY + REFILL — slower drop
+============================================================ */
+async function gravityRefill() {
+  const promises = [];
+  for (let c = 0; c < COLS; c++) {
+    const existing = [];
+    for (let r = ROWS-1; r >= 0; r--) {
+      const idx = r*COLS+c;
+      if (board[idx] !== null) existing.push(board[idx]);
+    }
+    const missing = ROWS - existing.length;
+    for (let k = 0; k < missing; k++) existing.push(rndSym());
+    existing.reverse(); // top→bottom
+
+    for (let r = 0; r < ROWS; r++) {
+      const idx = r*COLS+c;
+      const sym = existing[r];
+      board[idx] = sym;
+
+      const el = getCell(idx);
+      if (!el) continue;
+      el.style.left   = cellLeft(c)+'px';
+      el.style.top    = cellTop(r)+'px';
+      el.style.width  = CW+'px';
+      el.style.height = CH+'px';
+      el.className    = 'cell';
+      setSymInEl(el, sym);
+
+      const fallRows = r < missing ? (ROWS - r + 1) : 1;
+      const dy       = -(fallRows*(CH+GAP) + CH);
+      el.style.setProperty('--dy', dy+'px');
+      const delay = c*35 + r*25;
+      el.style.animationDelay = delay+'ms';
+      el.classList.add('dropping');
+
+      const p = new Promise(res => {
+        setTimeout(() => {
+          el.classList.remove('dropping');
+          el.style.animationDelay = '';
+          el.style.removeProperty('--dy');
+          res();
+        }, delay + 700);
+      });
+      promises.push(p);
+    }
+  }
+  await Promise.all(promises);
+}
+
+/* ============================================================
+   CLUSTER FINDER — BFS 4+ adjacent same symbol
+============================================================ */
+function findClusters() {
+  const visited  = new Array(N).fill(false);
+  const clusters = [];
+  for (let start = 0; start < N; start++) {
+    if (visited[start] || !board[start]) continue;
+    const sym = board[start];
+    const q = [start], found = [start];
+    visited[start] = true;
+    while (q.length) {
+      const cur = q.shift();
+      const r = Math.floor(cur/COLS), c = cur%COLS;
+      [[r-1,c],[r+1,c],[r,c-1],[r,c+1]].forEach(([nr,nc]) => {
+        if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) return;
+        const ni = nr*COLS+nc;
+        if (!visited[ni] && board[ni] && board[ni].id === sym.id) {
+          visited[ni] = true; q.push(ni); found.push(ni);
+        }
+      });
+    }
+    if (found.length >= 4) clusters.push({ sym, cells: found });
+  }
+  return clusters;
+}
+
+/* ============================================================
+   BURST TEXT
+============================================================ */
+function showBurst(cellIdx, text) {
+  const grid = document.getElementById('slotGrid');
+  const r = Math.floor(cellIdx/COLS), c = cellIdx%COLS;
+  const x = cellLeft(c) + CW/2;
+  const y = cellTop(r)  + CH/2;
+  const b = document.createElement('div');
+  b.className = 'mburst';
+  b.style.left     = x+'px';
+  b.style.top      = y+'px';
+  b.style.fontSize = 'clamp(.6rem,2vw,.88rem)';
+  b.textContent    = text;
+  grid.appendChild(b);
+  setTimeout(() => b.remove(), 1500);
+}
+
+function showWinText(txt) {
+  const el = document.getElementById('winOv');
+  el.textContent = txt;
+  el.classList.remove('show');
+  void el.offsetWidth;
+  el.classList.add('show');
+}
+
+/* ============================================================
+   MODAL
+============================================================ */
+function openModal(amount, isFinal) {
+  return new Promise(res => {
+    const types = [
+      { min:25000, t:'MEGA WIN!!!', d:'🎊', sub:'Rezeki nomplok! Minal aidin wal faizin! 🎁' },
+      { min:15000, t:'BIG WIN!',   d:'🎁', sub:'Wah besar banget! Berkah Lebaran! 🌙' },
+      { min:1000,  t:'WIN!',       d:'⭐',  sub:'Alhamdulillah! Semoga berkah! ✨' },
+    ];
+    const t = types.find(x => amount >= x.min) || { t:'WIN!', d:'🌙', sub:'Semoga berkah!' };
+    document.getElementById('mcDeco').textContent   = isFinal ? (amount>0?'🎁':'😅') : t.d;
+    document.getElementById('mcType').textContent   = isFinal ? (amount>0?'TOTAL THR MU!':'ZONK...') : t.t;
+    document.getElementById('mcSyms').textContent   = isFinal ? (amount>0?'✨ 🌙 🎁':'💨 💨 💨') : t.d.repeat(4);
+    document.getElementById('mcAmount').textContent = fmtRp(amount);
+    document.getElementById('mcSub').textContent    = isFinal
+      ? (amount>0 ? 'Selamat Hari Raya! Semoga rezekinya berlimpah! 🌙' : 'Rezeki sudah diatur, coba lagi! 🌙')
+      : t.sub;
+    document.getElementById('modal').classList.add('open');
+    if (amount > 0) spawnConfetti(amount > 15000 ? 80 : 40);
+    document.getElementById('btnOk').onclick = () => {
+      document.getElementById('modal').classList.remove('open');
+      res();
+    };
+  });
+}
+
+function showInfo() {
+  showWinText('🎁≥4 adj → menang! Tumble → mult naik!');
+}
+
+/* ============================================================
+   END / RESET
+============================================================ */
+async function endGame() { await openModal(totalPrize, true); }
+
+function resetAll() {
+  document.getElementById('modal').classList.remove('open');
+  newSession();
+  for (let i = 0; i < N; i++) board[i] = rndSym();
+  renderGrid();
+  buildPips();
+  updateUI();
+  const btn = document.getElementById('btnSpin');
+  btn.disabled    = false;
+  btn.textContent = '⚡ PUTAR!';
+}
+
+/* ============================================================
+   UI HELPERS
+============================================================ */
+function updateUI() {
+  document.getElementById('totalDisp').textContent = fmtRp(totalPrize);
+  const rd = document.getElementById('roundDisp');
+  rd.textContent = fmtRp(roundWin);
+  if (roundWin > 0) { rd.classList.remove('flash'); void rd.offsetWidth; rd.classList.add('flash'); }
+  document.getElementById('multDisp').textContent = '×'+curMult;
+}
+
+function buildPips() {
+  const row = document.getElementById('pipsRow');
+  row.innerHTML = '';
+  for (let i = 0; i < MAX_SPINS; i++) {
+    const p = document.createElement('div');
+    p.className = 'pip' + (i < spinsLeft ? ' on' : '');
+    row.appendChild(p);
+  }
+}
+
+/* ============================================================
+   CONFETTI — green palette
+============================================================ */
+function spawnConfetti(count) {
+  const c = document.getElementById('confetti');
+  const colors = ['#4dff88','#22cc55','#00ff66','#a0ffb8','#00e640','#88ffcc','#fff','#c8ffe0','#ffff44'];
+  for (let i = 0; i < count; i++) {
+    setTimeout(() => {
+      const p = document.createElement('div'); p.className = 'cp';
+      const sz = 5 + rng()*9;
+      p.style.cssText = `left:${rng()*100}%;width:${sz}px;height:${sz}px;background:${colors[Math.floor(rng()*colors.length)]};border-radius:${rng()>.5?'50%':'2px'};animation-duration:${1.8+rng()*2.2}s;animation-delay:${rng()*.6}s`;
+      c.appendChild(p); setTimeout(() => p.remove(), 5000);
+    }, i*20);
+  }
+}
+
+/* ============================================================
+   BG CANVAS — green nebula
+============================================================ */
+function initBg() {
+  const cv  = document.getElementById('bgCanvas');
+  const ctx = cv.getContext('2d');
+  let W, H, stars = [];
+
+  function resize() {
+    W = cv.width  = window.innerWidth;
+    H = cv.height = window.innerHeight;
+    stars = [];
+    for (let i = 0; i < 130; i++) stars.push({
+      x: rng()*W, y: rng()*H,
+      r: rng()*1.6+.2, a: rng(), da: .004+rng()*.012,
+      hue: rng() > .6 ? 130 : 80
+    });
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  const pts = [];
+  for (let i = 0; i < 22; i++) pts.push({
+    x: rng()*4000, y: rng()*4000,
+    vx: (rng()-.5)*.4, vy: -.25-rng()*.5,
+    r: rng()*2.5+.8, a: rng()*.35+.08
+  });
+
+  (function frame() {
+    ctx.clearRect(0, 0, W, H);
+    const g = ctx.createRadialGradient(W*.5, H*.1, 0, W*.5, H*.1, W*.8);
+    g.addColorStop(0, 'rgba(10,80,30,.12)');
+    g.addColorStop(.6, 'rgba(4,40,14,.05)');
+    g.addColorStop(1, 'transparent');
+    ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
+
+    const g2 = ctx.createRadialGradient(W*.8, H*.7, 0, W*.8, H*.7, W*.5);
+    g2.addColorStop(0, 'rgba(20,100,40,.06)');
+    g2.addColorStop(1, 'transparent');
+    ctx.fillStyle = g2; ctx.fillRect(0,0,W,H);
+
+    stars.forEach(s => {
+      s.a += s.da; if (s.a>1||s.a<0) s.da *= -1;
+      ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI*2);
+      ctx.fillStyle = `hsla(${s.hue},90%,75%,${s.a})`; ctx.fill();
+    });
+    pts.forEach(p => {
+      p.x += p.vx; p.y += p.vy;
+      if (p.y < -10) { p.y = H+10; p.x = rng()*W; }
+      ctx.beginPath(); ctx.arc(p.x%W, p.y%H, p.r, 0, Math.PI*2);
+      ctx.fillStyle = `rgba(60,220,100,${p.a})`; ctx.fill();
+    });
+    requestAnimationFrame(frame);
+  })();
+}
+
+/* ============================================================
+   START — wait for fonts + layout
+============================================================ */
+document.fonts.ready.then(() => {
+  requestAnimationFrame(() => requestAnimationFrame(() => init()));
+});
+</script>
+</body>
+</html>
